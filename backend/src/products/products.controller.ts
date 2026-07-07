@@ -12,9 +12,10 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { extname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { uploadToSupabase } from '../storage.util';
 import { ProductsService } from './products.service';
 import { SettingsService } from '../settings/settings.service';
 import { Product } from './product.entity';
@@ -93,13 +94,7 @@ export class ProductsController {
   @Post('upload/photo')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, cb) => {
-          const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
-          cb(null, uniqueName);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 5 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp|gif)$/)) {
@@ -110,6 +105,8 @@ export class ProductsController {
     }),
   )
   async uploadPhoto(@UploadedFile() file: Express.Multer.File) {
-    return { photoUrl: `/uploads/${file.filename}` };
+    const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
+    const photoUrl = await uploadToSupabase(uniqueName, file.buffer, file.mimetype);
+    return { photoUrl };
   }
 }
