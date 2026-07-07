@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument = require('pdfkit');
-import { Order } from './order.entity';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { Order, OrderItem } from './order.entity';
 
 const NAVY = '#0F1F3D';
 const NAVY_LIGHT = '#1E3A63';
@@ -11,7 +9,27 @@ const GRAY = '#6B7280';
 
 @Injectable()
 export class PdfService {
-  generateOrderPdf(order: Order): Promise<Buffer> {
+  private async fetchPhotoBuffers(items: OrderItem[]): Promise<Map<string, Buffer>> {
+    const map = new Map<string, Buffer>();
+    await Promise.all(
+      (items || []).map(async (item) => {
+        if (!item.productPhotoUrl) return;
+        try {
+          const res = await fetch(item.productPhotoUrl);
+          if (res.ok) {
+            map.set(item.productPhotoUrl, Buffer.from(await res.arrayBuffer()));
+          }
+        } catch (e) {
+          // ignore broken/unreachable images
+        }
+      }),
+    );
+    return map;
+  }
+
+  async generateOrderPdf(order: Order): Promise<Buffer> {
+    const photoBuffers = await this.fetchPhotoBuffers(order.items);
+
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const chunks: Buffer[] = [];
@@ -98,17 +116,15 @@ export class PdfService {
           .lineWidth(0.5)
           .stroke();
 
-        // Try to embed photo if it exists locally
-        if (item.productPhotoUrl && item.productPhotoUrl.startsWith('/uploads/')) {
-          const localPath = join(process.cwd(), item.productPhotoUrl);
-          if (existsSync(localPath)) {
-            try {
-              doc.image(localPath, colPhoto + 4, y + 4, {
-                fit: [46, 46],
-              });
-            } catch (e) {
-              // ignore broken images
-            }
+        // Embed the product photo if we managed to fetch it
+        const photoBuffer = item.productPhotoUrl && photoBuffers.get(item.productPhotoUrl);
+        if (photoBuffer) {
+          try {
+            doc.image(photoBuffer, colPhoto + 4, y + 4, {
+              fit: [46, 46],
+            });
+          } catch (e) {
+            // ignore broken images
           }
         }
 
