@@ -22,7 +22,7 @@ export async function uploadToSupabase(
       'Content-Type': mimetype,
       'x-upsert': 'true',
     },
-    body: buffer,
+    body: new Uint8Array(buffer),
   });
 
   if (!res.ok) {
